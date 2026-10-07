@@ -40,6 +40,12 @@ export function listRows(key: string): EntryRow[] {
   return allRows()[key] ?? []
 }
 
+// 写动作前重读一次本地存储：别的标签页刚写入的结论能立刻看到，并发确认只留首份。
+export function freshRows(key: string): EntryRow[] {
+  cache = readStorage()
+  return cache[key] ?? []
+}
+
 export function saveRows(key: string, rows: EntryRow[]): void {
   const next = { ...allRows(), [key]: rows }
   cache = next
