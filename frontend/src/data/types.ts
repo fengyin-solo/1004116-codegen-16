@@ -27,9 +27,29 @@ export type PageResult = {
   size: number
 }
 
+// 未就绪/冲突时提供的恢复入口：kind 由页面映射成具体按钮行为。
+export type RecoverKind = 'reload' | 'recheck' | 'progress' | 'prepare' | 'apron-ledger'
+
+export type RecoverEntry = {
+  label: string
+  kind: RecoverKind
+}
+
+export type ActionCode =
+  | 'not-found'
+  | 'unknown-action'
+  | 'illegal-transition'
+  | 'archived'
+  | 'conflict'
+  | 'not-ready'
+
 export type ActionResult = {
   ok: boolean
   message: string
+  code?: ActionCode
+  currentStatus?: string
+  recover?: RecoverEntry
+  syncedPatrolNo?: string
 }
 
 export type OverviewResult = {

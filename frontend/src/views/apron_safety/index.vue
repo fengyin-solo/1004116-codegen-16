@@ -3,13 +3,18 @@
     <header class="page-head">
       <div>
         <h2>机坪安全管理</h2>
-        <p class="page-desc">维护机坪安全，围绕巡查编号、巡查区域、巡查人员、巡查日期做登记、筛选与状态流转。</p>
+        <p class="page-desc">维护机坪安全巡查台账；过站监控标记超时后，会自动同步一条「待巡查」待办到这里。</p>
       </div>
       <div class="page-actions">
         <button class="btn primary" type="button" @click="openCreate">登记机坪安全</button>
         <button class="btn" type="button" @click="exportRows">导出机坪安全清单</button>
       </div>
     </header>
+
+    <div v-if="syncedPendingCount" class="notice-banner external">
+      <span>有 {{ syncedPendingCount }} 条过站超时同步的巡查待办（待巡查），请及时安排现场核查。</span>
+      <RouterLink class="btn mini" to="/turnaround">返回过站监控</RouterLink>
+    </div>
 
     <div class="stat-row">
       <article v-for="item in stats" :key="item.label" class="stat-card">
@@ -38,13 +43,22 @@
         <tr>
           <th v-for="column in columns" :key="column">{{ column }}</th>
           <th>当前状态</th>
+          <th>联动来源</th>
           <th>可执行动作</th>
         </tr>
       </thead>
       <tbody>
-        <tr v-for="row in rows" :key="String(row.id)">
+        <tr v-for="row in rows" :key="String(row.id)" :class="{ 'row-synced': isSynced(row) }">
           <td v-for="column in columns" :key="column">{{ row[column] ?? '—' }}</td>
-          <td>{{ row.status }}</td>
+          <td>
+            <span :class="['status-pill', `status-${row.status === '待巡查' ? 'pending' : 'tracking'}`]">{{ row.status }}</span>
+          </td>
+          <td>
+            <span v-if="isSynced(row)" class="sync-badge" title="过站超时后自动同步的机坪巡查待办">
+              过站超时联动 · {{ String(row._过站编号) }}
+            </span>
+            <span v-else class="muted-text">台账自建</span>
+          </td>
           <td class="row-actions">
             <button
               v-for="action in actions"
@@ -58,7 +72,7 @@
           </td>
         </tr>
         <tr v-if="!rows.length">
-          <td :colspan="columns.length + 2" class="empty-state">暂无机坪安全数据，可先登记机坪安全</td>
+          <td :colspan="columns.length + 3" class="empty-state">暂无机坪安全数据，可先登记机坪安全</td>
         </tr>
       </tbody>
     </table>
@@ -71,7 +85,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 
 import {
   downloadEntries,
@@ -79,6 +93,7 @@ import {
   moduleMeta,
   runAction as applyAction,
 } from '@/api/local-service'
+import { subscribeStoreChanges } from '@/data/local-store'
 import type { EntryRow } from '@/data/types'
 
 const meta = moduleMeta('apron_safety')
@@ -92,11 +107,22 @@ const total = ref(0)
 const errorMessage = ref('')
 const filters = ref<Record<string, string>>({})
 const filterFields = columns.slice(0, 3)
+let unsubscribe: (() => void) | null = null
+
 const statusSummary = computed(() =>
   statuses.map((status: string) => ({
     status,
     count: rows.value.filter((row) => String(row.status) === status).length,
   })),
+)
+
+// 过站超时联动写入的巡查待办：来源标记走内部字段，不进历史归档导出。
+function isSynced(row: EntryRow): boolean {
+  return String(row._来源 ?? '') === '过站超时同步'
+}
+
+const syncedPendingCount = computed(
+  () => rows.value.filter((row) => isSynced(row) && String(row.status) === '待巡查').length,
 )
 
 function resetFilters() {
@@ -133,5 +159,17 @@ function reload() {
   }
 }
 
-onMounted(reload)
+onMounted(() => {
+  reload()
+  // 过站监控超时联动写入台账后，本页自动刷新出新的巡查待办。
+  unsubscribe = subscribeStoreChanges((key) => {
+    if (key === null || key === 'apron_safety' || key === 'turnaround') {
+      reload()
+    }
+  })
+})
+
+onBeforeUnmount(() => {
+  unsubscribe?.()
+})
 </script>
